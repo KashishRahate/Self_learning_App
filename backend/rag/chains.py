@@ -5,8 +5,11 @@ from langchain.schema.runnable import Runnable
 from langchain_core.output_parsers import (BaseOutputParser, JsonOutputParser,
                                            PydanticOutputParser)
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.pydantic_v1 import BaseModel
-from pydantic import Field
+# Use v1 imports if using Langchain Pydantic v1 compatibility
+from langchain_core.pydantic_v1 import BaseModel, Field
+# Or use standard Pydantic if Langchain uses Pydantic v2
+# from pydantic import BaseModel, Field
+
 from rag.data_models import (FlashCard, FlashCards, QuestionAndAnswer,
                              QuestionsAndAnswers, Subjects)
 
@@ -23,7 +26,7 @@ def create_chat_chain(llm: BaseLanguageModel) -> Runnable:
     chain = (
         prompt | llm | StrOutputParser()
     ).with_config(
-        run_name="ChainChain",
+        run_name="ChatChain", # Corrected run_name
     )
     return chain
 
@@ -38,15 +41,17 @@ def create_transcript_summary_chain(llm: BaseLanguageModel) -> Runnable:
 
 
 def create_flashcard_chain(llm: BaseLanguageModel) -> Runnable:
+    # Ensure FLASHCARDS_TEMPLATE includes instructions for the Pydantic format
     chain = (
         PromptTemplate.from_template(FLASHCARDS_TEMPLATE) | llm | PydanticOutputParser(pydantic_object=FlashCards)
     ).with_config(
-        run_name="QuizChain",
+        run_name="FlashcardChain", # Corrected run_name
     )
     return chain
 
 
 def create_quiz_chain(llm: BaseLanguageModel) -> Runnable:
+     # Ensure QUIZ_TEMPLATE includes instructions for the Pydantic format
     chain = (
         PromptTemplate.from_template(QUIZ_TEMPLATE) | llm | PydanticOutputParser(pydantic_object=QuestionsAndAnswers)
     ).with_config(
@@ -56,10 +61,11 @@ def create_quiz_chain(llm: BaseLanguageModel) -> Runnable:
 
 
 def create_subjects_chain(llm: BaseLanguageModel) -> Runnable:
+     # Ensure SUBJECTS_TEMPLATE includes instructions for the JSON format { "subjects": ["subj1", "subj2"] }
     chain = (
         PromptTemplate.from_template(SUBJECTS_TEMPLATE) | llm | JsonOutputParser(pydantic_object=Subjects)
     ).with_config(
-        run_name="QuizChain",
+        run_name="SubjectsChain", # Corrected run_name
     )
     return chain
 
