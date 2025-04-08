@@ -19,11 +19,12 @@ const API_STATE = {
   IDLE: "idle",
   LOADING: "loading",
   LOADED: "loaded",
-  LOADED_EMPTY: "loaded_empty", // New state for loaded but no results
+  LOADED_EMPTY: "loaded_empty",
   ERROR: "error",
 };
 
 const EventList = () => {
+  // --- State Definitions (Unchanged) ---
   const [state, setState] = useState({
     youtubeLink: "",
     apiData: {
@@ -43,12 +44,11 @@ const EventList = () => {
     user_id: "94bd2faf-d21b-452d-a9a2-0159363a11fd",
     errorMessage: null,
   });
-
   const [selectedAnswers, setSelectedAnswers] = useState({});
   const stepTwoRef = useRef(null);
   const onDemandSectionRef = useRef(null);
 
-  // --- Event Handlers & Effects (mostly unchanged) ---
+  // --- Event Handlers & Effects (Unchanged) ---
   const handleSummaryClick = () => {
     if (state.apiData.summary?.data) {
       setState((prevState) => ({
@@ -62,12 +62,12 @@ const EventList = () => {
   };
   const handleSubjectsClick = () => {
     const { subjects } = state.apiData;
-    if (subjects && subjects.data && Array.isArray(subjects.data)) {
-      const subjectsContent = (
+    if (subjects?.data && Array.isArray(subjects.data)) {
+      const content = (
         <ul>
           {" "}
-          {subjects.data.map((subject, index) => (
-            <li key={index}>{subject}</li>
+          {subjects.data.map((s, i) => (
+            <li key={i}>{s}</li>
           ))}{" "}
         </ul>
       );
@@ -75,7 +75,7 @@ const EventList = () => {
         ...prevState,
         summarySelected: false,
         subjectsSelected: true,
-        selectedText: subjectsContent,
+        selectedText: content,
         errorMessage: null,
       }));
     } else {
@@ -112,17 +112,17 @@ const EventList = () => {
     }
   }, [state.quizState, state.flashcardState]);
 
-  // --- Data Fetching Logic (fetchData unchanged) ---
+  // --- Data Fetching Logic (fetchData, wait - Unchanged) ---
   const fetchData = async (endpoint, body) => {
     const apiUrl = `/api/${endpoint}/`;
     console.log(`Sending request to: ${apiUrl}`);
     console.log(
-      "Request body (first 100 chars of transcript):",
+      "Request body (first 100 chars):",
       JSON.stringify({
         ...body,
         transcript: body.transcript?.substring(0, 100) + "...",
       })
-    ); // Log truncated transcript
+    );
     try {
       const response = await fetch(apiUrl, {
         method: "POST",
@@ -147,25 +147,18 @@ const EventList = () => {
       try {
         return JSON.parse(responseBodyText);
       } catch (e) {
-        console.error(
-          `Failed to parse JSON response from ${apiUrl}:`,
-          responseBodyText
-        );
-        throw new Error(
-          `Received non-JSON response from server for ${apiUrl}.`
-        );
+        console.error(`Failed to parse JSON from ${apiUrl}:`, responseBodyText);
+        throw new Error(`Received non-JSON response.`);
       }
     } catch (error) {
       console.error(`Error fetching data from ${apiUrl}:`, error);
       throw error;
     }
   };
-
-  // Optional small delay function
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-  const onDemandFetchDelay = 500; // Small delay (0.5s) before on-demand fetch, can be 0
+  const onDemandFetchDelay = 0; // Can set back to 0 if desired
 
-  // --- handleSubmit for Initial Generation (unchanged) ---
+  // --- handleSubmit for Initial Generation (Unchanged) ---
   const handleSubmit = async (event) => {
     event.preventDefault();
     setState((prevState) => ({
@@ -192,18 +185,16 @@ const EventList = () => {
     let subjectsData = null;
     try {
       console.log("Fetching transcript...");
-      const transcriptResponse = await fetchData("yt_link", {
+      const tr = await fetchData("yt_link", {
         url: state.youtubeLink,
         user_id: state.user_id,
       });
-      if (!transcriptResponse?.transcript) {
-        throw new Error("Failed to fetch a valid transcript.");
-      }
-      transcript = transcriptResponse.transcript;
-      console.log(`Transcript fetched (length: ${transcript.length}).`);
-      setState((prevState) => ({
-        ...prevState,
-        apiData: { ...prevState.apiData, transcript: transcript },
+      if (!tr?.transcript) throw new Error("Invalid transcript.");
+      transcript = tr.transcript;
+      console.log(`Transcript fetched (len: ${transcript.length}).`);
+      setState((p) => ({
+        ...p,
+        apiData: { ...p.apiData, transcript: transcript },
       }));
       console.log("Fetching summary...");
       summaryData = await fetchData("summary", {
@@ -217,14 +208,10 @@ const EventList = () => {
         user_id: state.user_id,
       });
       console.log("Subjects fetched.");
-      console.log("Initial data generation complete.");
-      setState((prevState) => ({
-        ...prevState,
-        apiData: {
-          ...prevState.apiData,
-          summary: summaryData,
-          subjects: subjectsData,
-        },
+      console.log("Initial data gen complete.");
+      setState((p) => ({
+        ...p,
+        apiData: { ...p.apiData, summary: summaryData, subjects: subjectsData },
         isInitialLoading: false,
         initialDataLoaded: true,
         selectedText: summaryData?.data ? (
@@ -237,48 +224,38 @@ const EventList = () => {
         errorMessage: null,
       }));
     } catch (error) {
-      console.error("Error during initial handleSubmit sequence:", error);
-      let userErrorMessage = `An error occurred: ${error.message}`;
-      if (error.status === 429) {
-        userErrorMessage =
-          "API Rate Limit Exceeded during initial generation. Please wait a minute and try again.";
-      } else if (error.message.includes("transcript")) {
-        userErrorMessage =
-          "Failed to get a valid transcript. Check the link/captions.";
-      }
-      setState((prevState) => ({
-        ...prevState,
-        isInitialLoading: false,
-        errorMessage: userErrorMessage,
-      }));
+      console.error("Error in handleSubmit:", error);
+      let msg = `An error occurred: ${error.message}`;
+      if (error.status === 429)
+        msg = "API Rate Limit Exceeded during initial generation.";
+      else if (error.message.includes("transcript"))
+        msg = "Failed to get a valid transcript.";
+      setState((p) => ({ ...p, isInitialLoading: false, errorMessage: msg }));
     }
   };
 
-  // --- Refined handleGenerateQuiz ---
+  // --- handleGenerateQuiz (Unchanged from fix for parsing) ---
   const handleGenerateQuiz = async () => {
     if (!state.apiData.transcript || state.quizState === API_STATE.LOADING)
       return;
     console.log("Requesting Quiz Generation...");
-    // Add optional small delay before fetching
     await wait(onDemandFetchDelay);
-    setState((prevState) => ({
-      ...prevState,
+    setState((p) => ({
+      ...p,
       quizState: API_STATE.LOADING,
       errorMessage: null,
     }));
     setSelectedAnswers({});
-
     try {
       console.log(
-        `Sending transcript (length: ${state.apiData.transcript.length}) for quiz generation.`
-      ); // Log length
-      const quizzesResponse = await fetchData("quiz", {
+        `Sending transcript (len: ${state.apiData.transcript.length}) for quiz.`
+      );
+      const res = await fetchData("quiz", {
         transcript: state.apiData.transcript,
         user_id: state.user_id,
       });
-      console.log("Raw quiz response from backend:", quizzesResponse);
-
-      const quizItems = (quizzesResponse?.data || [])
+      console.log("Raw quiz response:", res);
+      const items = (res?.data || [])
         .map((q) => {
           if (
             q &&
@@ -289,71 +266,62 @@ const EventList = () => {
           ) {
             return q;
           } else {
-            console.warn("Skipping invalid quiz item structure:", q);
+            console.warn("Skipping invalid quiz structure:", q);
             return null;
           }
         })
         .filter(Boolean);
-
       const newState =
-        quizItems.length > 0 ? API_STATE.LOADED : API_STATE.LOADED_EMPTY; // Set specific state
-      if (newState === API_STATE.LOADED_EMPTY) {
-        console.warn(
-          "Quiz generation succeeded but returned zero valid questions."
-        );
-      }
-
-      setState((prevState) => ({
-        ...prevState,
-        apiData: { ...prevState.apiData, quizzes: { data: quizItems } },
-        quizState: newState, // Use LOADED or LOADED_EMPTY
+        items.length > 0 ? API_STATE.LOADED : API_STATE.LOADED_EMPTY;
+      if (newState === API_STATE.LOADED_EMPTY)
+        console.warn("Quiz gen OK but returned zero valid questions.");
+      setState((p) => ({
+        ...p,
+        apiData: { ...p.apiData, quizzes: { data: items } },
+        quizState: newState,
       }));
     } catch (error) {
       console.error("Error generating quiz:", error);
-      let userErrorMessage = `Failed to generate quiz: ${error.message}`;
-      if (error.status === 429) {
-        userErrorMessage =
-          "API Rate Limit Exceeded while generating quiz. Please try again later.";
-      }
-      setState((prevState) => ({
-        ...prevState,
+      let msg = `Failed to generate quiz: ${error.message}`;
+      if (error.status === 429)
+        msg = "API Rate Limit Exceeded generating quiz.";
+      setState((p) => ({
+        ...p,
         quizState: API_STATE.ERROR,
-        errorMessage: userErrorMessage,
+        errorMessage: msg,
       }));
     }
   };
 
-  // --- Refined handleGenerateFlashcards ---
+  // --- handleGenerateFlashcards (Unchanged from fix for parsing) ---
   const handleGenerateFlashcards = async () => {
     if (!state.apiData.transcript || state.flashcardState === API_STATE.LOADING)
       return;
     console.log("Requesting Flashcard Generation...");
-    await wait(onDemandFetchDelay); // Optional small delay
-    setState((prevState) => ({
-      ...prevState,
+    await wait(onDemandFetchDelay);
+    setState((p) => ({
+      ...p,
       flashcardState: API_STATE.LOADING,
       errorMessage: null,
     }));
-
     try {
       console.log(
-        `Sending transcript (length: ${state.apiData.transcript.length}) for flashcard generation.`
-      ); // Log length
-      const flashcardsData = await fetchData("flashcards", {
+        `Sending transcript (len: ${state.apiData.transcript.length}) for flashcards.`
+      );
+      const res = await fetchData("flashcards", {
         transcript: state.apiData.transcript,
         user_id: state.user_id,
       });
-      console.log("Raw flashcards response from backend:", flashcardsData);
-
-      let adaptedFlashcards = [];
+      console.log("Raw flashcards response:", res);
+      let adapted = [];
       if (
-        flashcardsData &&
-        Array.isArray(flashcardsData.questions) &&
-        Array.isArray(flashcardsData.answers) &&
-        Array.isArray(flashcardsData.images)
+        res &&
+        Array.isArray(res.questions) &&
+        Array.isArray(res.answers) &&
+        Array.isArray(res.images)
       ) {
-        adaptedFlashcards = flashcardsData.questions.map((question, i) => ({
-          id: i, // Add checks for missing data inside if needed
+        adapted = res.questions.map((q, i) => ({
+          id: i,
           frontHTML: (
             <div
               style={{ display: "flex", height: "100%", alignItems: "center" }}
@@ -372,7 +340,7 @@ const EventList = () => {
                 {" "}
                 <div className="flashcard-title">
                   {" "}
-                  <h6 style={{ margin: 0 }}>{question || "N/A"}</h6>{" "}
+                  <h6 style={{ margin: 0 }}>{q || "N/A"}</h6>{" "}
                 </div>{" "}
               </div>{" "}
               <div
@@ -385,8 +353,8 @@ const EventList = () => {
               >
                 {" "}
                 <img
-                  src={flashcardsData.images[i] || loadinggif}
-                  alt="Flashcard visual representation"
+                  src={res.images[i] || loadinggif}
+                  alt="Flashcard visual"
                   className="img-thumbnail flashcard-img"
                   style={{
                     maxHeight: "150px",
@@ -402,146 +370,168 @@ const EventList = () => {
               {" "}
               <div className="backstyle-text">
                 {" "}
-                <h4>{flashcardsData.answers[i] || "N/A"}</h4>{" "}
+                <h4>{res.answers[i] || "N/A"}</h4>{" "}
               </div>{" "}
             </div>
           ),
         }));
       } else {
-        console.warn(
-          "Flashcard data received is incomplete/invalid.",
-          flashcardsData
-        );
-        // Decide if this is an error or just loaded empty
-        // Let's treat it as LOADED_EMPTY for now if the request succeeded (status 200)
-        // throw new Error("Received incomplete data for flashcards."); // Or throw error
+        console.warn("Flashcard data invalid.", res);
+        throw new Error("Incomplete flashcard data.");
       }
-
       const newState =
-        adaptedFlashcards.length > 0
-          ? API_STATE.LOADED
-          : API_STATE.LOADED_EMPTY;
-      if (newState === API_STATE.LOADED_EMPTY) {
-        console.warn(
-          "Flashcard generation succeeded but returned zero valid cards."
-        );
-      }
-
-      setState((prevState) => ({
-        ...prevState,
-        apiData: { ...prevState.apiData, flashcards: adaptedFlashcards },
-        flashcardState: newState, // Use LOADED or LOADED_EMPTY
+        adapted.length > 0 ? API_STATE.LOADED : API_STATE.LOADED_EMPTY;
+      if (newState === API_STATE.LOADED_EMPTY)
+        console.warn("Flashcard gen OK but zero valid cards.");
+      setState((p) => ({
+        ...p,
+        apiData: { ...p.apiData, flashcards: adapted },
+        flashcardState: newState,
       }));
     } catch (error) {
       console.error("Error generating flashcards:", error);
-      let userErrorMessage = `Failed to generate flashcards: ${error.message}`;
-      if (error.status === 429) {
-        userErrorMessage =
-          "API Rate Limit Exceeded while generating flashcards. Please try again later.";
-      }
-      setState((prevState) => ({
-        ...prevState,
+      let msg = `Failed to generate flashcards: ${error.message}`;
+      if (error.status === 429)
+        msg = "API Rate Limit Exceeded generating flashcards.";
+      setState((p) => ({
+        ...p,
         flashcardState: API_STATE.ERROR,
-        errorMessage: userErrorMessage,
+        errorMessage: msg,
       }));
     }
   };
 
-  // --- Quiz Component (Unchanged, but uses state correctly) ---
+  // --- CORRECTED Quiz Component ---
   const QuizzesContent = ({
     quizzesData,
     selectedAnswers,
     setSelectedAnswers,
   }) => {
-    if (!quizzesData || quizzesData.length === 0)
-      return <div>No quiz questions available to display.</div>; // More specific message
+    // quizzesData is the array of quiz objects: [{question, answers, correct_answer (index)}, ...]
+    if (!quizzesData || quizzesData.length === 0) {
+      return <div>No quiz questions available to display.</div>;
+    }
+
+    // Calculate score based on comparing selected answer *text* to the correct answer *text*
     let correctAnswersCount = 0;
     quizzesData.forEach((quiz, index) => {
-      if (
-        quiz &&
-        selectedAnswers.hasOwnProperty(index) &&
-        quiz.correct_answer === selectedAnswers[index]
-      ) {
-        correctAnswersCount += 1;
+      if (quiz && selectedAnswers.hasOwnProperty(index)) {
+        // Get the text of the correct answer using the index
+        const correctAnswerText = quiz.answers?.[quiz.correct_answer];
+        // Compare the stored selected answer text with the actual correct answer text
+        if (
+          correctAnswerText !== undefined &&
+          selectedAnswers[index] === correctAnswerText
+        ) {
+          correctAnswersCount += 1;
+        }
       }
     });
+
     const handleAnswerChange = (quizIndex, answerValue) => {
-      setSelectedAnswers((prev) => ({ ...prev, [quizIndex]: answerValue }));
+      // Store the selected answer's *text* in the state
+      setSelectedAnswers((prevSelectedAnswers) => ({
+        ...prevSelectedAnswers,
+        [quizIndex]: answerValue,
+      }));
     };
+
     return (
       <form onSubmit={(e) => e.preventDefault()}>
-        {" "}
         {quizzesData.map((quiz, index) => {
-          if (!quiz || !Array.isArray(quiz.answers)) return null;
+          // Basic validation for each quiz item
+          if (
+            !quiz ||
+            !quiz.question ||
+            !Array.isArray(quiz.answers) ||
+            typeof quiz.correct_answer !== "number"
+          ) {
+            console.warn("Skipping rendering of invalid quiz item:", quiz);
+            return null;
+          }
+          // Get the text of the correct answer for this question
+          const correctAnswerText = quiz.answers[quiz.correct_answer];
+
           return (
             <div key={index} className="quiz-block">
-              {" "}
               <h4 className="question-heading">
                 {" "}
                 Q{index + 1}: {quiz.question}{" "}
-              </h4>{" "}
+              </h4>
               {quiz.answers.map((answer, answerIndex) => {
+                // Determine if this specific radio button is the one the user selected
                 const isChecked = selectedAnswers[index] === answer;
-                const isSelectedCorrect =
-                  isChecked && quiz.correct_answer === answer;
-                const isCorrectOption = quiz.correct_answer === answer;
+
+                // Determine display styles *after* an answer has been selected for this question
                 let labelClassName = "";
                 let flag = null;
                 if (selectedAnswers.hasOwnProperty(index)) {
+                  // Check if user answered this question
+                  const userSelectedAnswerText = selectedAnswers[index];
+
                   if (isChecked) {
-                    labelClassName = isSelectedCorrect
-                      ? "correct-answer"
-                      : "incorrect-answer";
-                    flag = isSelectedCorrect ? (
-                      <span className="answer-flag"> ✅</span>
-                    ) : (
-                      <span className="answer-flag"> ❌</span>
-                    );
-                  } else if (isCorrectOption) {
-                    labelClassName = "correct-answer-unselected";
+                    // This is the radio button the user selected
+                    if (userSelectedAnswerText === correctAnswerText) {
+                      // Selected answer IS correct
+                      labelClassName = "correct-answer";
+                      flag = <span className="answer-flag"> ✅</span>;
+                    } else {
+                      // Selected answer IS incorrect
+                      labelClassName = "incorrect-answer";
+                      flag = <span className="answer-flag"> ❌</span>;
+                    }
+                  } else {
+                    // This radio button was NOT selected
+                    // Check if this UNSELECTED option is the ACTUAL correct answer
+                    if (answer === correctAnswerText) {
+                      labelClassName = "correct-answer-unselected"; // Style to highlight the correct answer if user was wrong
+                    }
                   }
-                }
+                } // End if user answered this question
+
                 return (
                   <div
                     key={answerIndex}
                     className={`quiz-option ${labelClassName}`}
                   >
-                    {" "}
                     <input
                       type="radio"
                       id={`question-${index}-option-${answerIndex}`}
                       name={`question-${index}`}
-                      value={answer}
+                      value={answer} // The value is the answer text
+                      // Update state with the answer text when changed
                       onChange={(e) =>
                         handleAnswerChange(index, e.target.value)
                       }
-                      checked={isChecked}
-                    />{" "}
+                      checked={isChecked} // Check based on stored answer text
+                      // Disable further changes once an answer is selected for this question (optional)
+                      // disabled={selectedAnswers.hasOwnProperty(index)}
+                    />
                     <label htmlFor={`question-${index}-option-${answerIndex}`}>
                       {answer}
-                      {flag}
-                    </label>{" "}
+                      {flag} {/* Show flag only next to the selected answer */}
+                    </label>
                   </div>
                 );
-              })}{" "}
+              })}
             </div>
           );
-        })}{" "}
+        })}
+        {/* Display Score */}
         <div className="correct-answers-count">
-          {" "}
           {Object.keys(selectedAnswers).length > 0 &&
-            `Score: ${correctAnswersCount} / ${quizzesData.length}`}{" "}
-        </div>{" "}
+            `Score: ${correctAnswersCount} / ${quizzesData.length}`}
+        </div>
       </form>
     );
   };
 
-  // --- Render Logic (Adjusted for new states) ---
+  // --- Render Logic (Unchanged Structure) ---
   return (
     <>
       <SEO title="EduAction Generator" />
       <Layout>
-        {/* --- Step 1: Input Link --- */}
+        {/* Step 1 */}
         <div className="containersteps">
           <h2 className="stepsname">Step 1: Paste your YouTube link</h2>
           <form onSubmit={handleSubmit}>
@@ -587,7 +577,6 @@ const EventList = () => {
               )}
             </div>
           </form>
-          {/* General Error Display */}
           {state.errorMessage &&
             !state.isInitialLoading &&
             state.quizState !== API_STATE.LOADING &&
@@ -596,7 +585,7 @@ const EventList = () => {
             )}
         </div>
 
-        {/* --- Step 1.5: Cooking/Loading (for Initial Load) --- */}
+        {/* Step 1.5 Loading */}
         {state.isInitialLoading && (
           <div className="containersteps2 containerstepscooking">
             {" "}
@@ -618,11 +607,10 @@ const EventList = () => {
           </div>
         )}
 
-        {/* --- Step 2: Summary & Subjects & On-Demand Triggers --- */}
+        {/* Step 2 & On-Demand Triggers */}
         {state.initialDataLoaded && !state.isInitialLoading && (
           <div ref={stepTwoRef} className="containersteps2">
             <h2 className="stepsname">Step 2: Summary & Subjects</h2>
-            {/* Summary/Subjects Tabs */}
             <div className="button-row">
               <button
                 type="button"
@@ -659,16 +647,12 @@ const EventList = () => {
                 Subjects{" "}
               </button>
             </div>
-            {/* Display Area */}
             {state.selectedText && (
               <div className="text-box">{state.selectedText}</div>
             )}
-
-            {/* --- On-Demand Generation Section --- */}
             <h3 className="stepsname" style={{ marginTop: "30px" }}>
               Step 3: Generate More (Optional)
             </h3>
-            {/* On-Demand Error Display */}
             {(state.quizState === API_STATE.ERROR ||
               state.flashcardState === API_STATE.ERROR) &&
               state.errorMessage && (
@@ -679,7 +663,6 @@ const EventList = () => {
                   {state.errorMessage}
                 </div>
               )}
-            {/* On-Demand Buttons */}
             <div className="button-row">
               <button
                 type="button"
@@ -712,7 +695,7 @@ const EventList = () => {
                       className="button-icon"
                     />{" "}
                     Quiz Generated{" "}
-                  </> // Combined loaded states for button display
+                  </>
                 ) : (
                   <> Generate Quiz </>
                 )}
@@ -748,7 +731,7 @@ const EventList = () => {
                       className="button-icon"
                     />{" "}
                     Flashcards Generated{" "}
-                  </> // Combined loaded states
+                  </>
                 ) : (
                   <> Generate Flashcards </>
                 )}
@@ -757,90 +740,94 @@ const EventList = () => {
           </div>
         )}
 
-        {/* --- Display Area for On-Demand Content (Quiz/Flashcards) --- */}
+        {/* On-Demand Content Display */}
         <div ref={onDemandSectionRef}>
-          {/* Show Quiz Area if Loaded (with or without data) or if Error occurred after trying */}
           {(state.quizState === API_STATE.LOADED ||
             state.quizState === API_STATE.LOADED_EMPTY ||
-            state.quizState === API_STATE.ERROR) &&
-            state.initialDataLoaded && (
-              <div className="containersteps3">
-                <h2 className="stepsname" style={{ marginBottom: "20px" }}>
-                  Generated Quiz
-                </h2>
-                <div className="text-box">
-                  {state.quizState === API_STATE.LOADED ? (
-                    <QuizzesContent
-                      quizzesData={state.apiData.quizzes?.data || []}
-                      selectedAnswers={selectedAnswers}
-                      setSelectedAnswers={setSelectedAnswers}
-                    />
-                  ) : state.quizState === API_STATE.LOADED_EMPTY ? (
-                    <div>
-                      Quiz generation complete, but no questions were found for
-                      this content.
-                    </div>
-                  ) : state.quizState === API_STATE.ERROR &&
-                    state.errorMessage ? (
-                    <div className="error-message">{state.errorMessage}</div> // Show specific error if loading failed
-                  ) : null}
-                </div>
-              </div>
-            )}
-
-          {/* Show Flashcard Area if Loaded (with or without data) or if Error occurred */}
-          {(state.flashcardState === API_STATE.LOADED ||
+            state.flashcardState === API_STATE.LOADED ||
             state.flashcardState === API_STATE.LOADED_EMPTY ||
+            state.quizState === API_STATE.ERROR ||
             state.flashcardState === API_STATE.ERROR) &&
             state.initialDataLoaded && (
-              <div
-                className="containersteps3"
-                style={{
-                  marginTop: state.quizState !== API_STATE.IDLE ? "30px" : "0",
-                }}
-              >
-                {" "}
-                {/* Add margin if quiz section is also shown */}
-                <h2 className="stepsname" style={{ marginBottom: "20px" }}>
-                  Generated Flashcards
-                </h2>
-                <div className="text-box2">
-                  {state.flashcardState === API_STATE.LOADED ? (
-                    <FlashcardArray
-                      cards={state.apiData.flashcards || []}
-                      frontCardStyle={{
-                        backgroundColor: "#e0f7fa",
-                        border: "1px solid #007bff",
-                        borderRadius: "8px",
-                        padding: "15px",
-                      }}
-                      backCardStyle={{
-                        backgroundColor: "#fff3e0",
-                        border: "1px solid #ff9800",
-                        borderRadius: "8px",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        padding: "15px",
-                        height: "100%",
-                        width: "100%",
-                      }}
-                    />
-                  ) : state.flashcardState === API_STATE.LOADED_EMPTY ? (
-                    <div>
-                      Flashcard generation complete, but no cards were created
-                      for this content.
+              <div className="containersteps3">
+                {/* Quiz Section */}
+                {(state.quizState === API_STATE.LOADED ||
+                  state.quizState === API_STATE.LOADED_EMPTY ||
+                  state.quizState === API_STATE.ERROR) && (
+                  <>
+                    <h2 className="stepsname" style={{ marginBottom: "20px" }}>
+                      Generated Quiz
+                    </h2>
+                    <div className="text-box">
+                      {state.quizState === API_STATE.LOADED ? (
+                        <QuizzesContent
+                          quizzesData={state.apiData.quizzes?.data || []}
+                          selectedAnswers={selectedAnswers}
+                          setSelectedAnswers={setSelectedAnswers}
+                        />
+                      ) : state.quizState === API_STATE.LOADED_EMPTY ? (
+                        <div>
+                          Quiz generation complete, but no questions were found.
+                        </div>
+                      ) : state.quizState === API_STATE.ERROR &&
+                        state.errorMessage ? (
+                        <div className="error-message">
+                          {state.errorMessage}
+                        </div>
+                      ) : null}
                     </div>
-                  ) : state.flashcardState === API_STATE.ERROR &&
-                    state.errorMessage ? (
-                    <div className="error-message">{state.errorMessage}</div>
-                  ) : null}
-                </div>
+                  </>
+                )}
+                {/* Flashcard Section */}
+                {(state.flashcardState === API_STATE.LOADED ||
+                  state.flashcardState === API_STATE.LOADED_EMPTY ||
+                  state.flashcardState === API_STATE.ERROR) && (
+                  <>
+                    <h2
+                      className="stepsname"
+                      style={{ marginTop: "30px", marginBottom: "20px" }}
+                    >
+                      Generated Flashcards
+                    </h2>
+                    <div className="text-box2">
+                      {state.flashcardState === API_STATE.LOADED ? (
+                        <FlashcardArray
+                          cards={state.apiData.flashcards || []}
+                          frontCardStyle={{
+                            backgroundColor: "#e0f7fa",
+                            border: "1px solid #007bff",
+                            borderRadius: "8px",
+                            padding: "15px",
+                          }}
+                          backCardStyle={{
+                            backgroundColor: "#fff3e0",
+                            border: "1px solid #ff9800",
+                            borderRadius: "8px",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            padding: "15px",
+                            height: "100%",
+                            width: "100%",
+                          }}
+                        />
+                      ) : state.flashcardState === API_STATE.LOADED_EMPTY ? (
+                        <div>
+                          Flashcard generation complete, but no cards were
+                          created.
+                        </div>
+                      ) : state.flashcardState === API_STATE.ERROR &&
+                        state.errorMessage ? (
+                        <div className="error-message">
+                          {state.errorMessage}
+                        </div>
+                      ) : null}
+                    </div>
+                  </>
+                )}
               </div>
             )}
         </div>
-
-        {/* Final Screen remains optional */}
       </Layout>
     </>
   );
