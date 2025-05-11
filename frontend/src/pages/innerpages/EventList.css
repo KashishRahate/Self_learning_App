@@ -1,0 +1,143 @@
+/* Base button style for buttons1 */
+.buttons1 {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 24px;
+  font-size: 16px;
+  font-weight: 600;
+  text-transform: uppercase;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease,
+    background-color 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  color: #fff;
+  min-width: 120px;
+  height: 48px;
+}
+
+/* Button row for quiz buttons */
+.quiz-button-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 15px;
+}
+
+/* Button row for flashcards button */
+.flashcards-button-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 25px;
+}
+
+/* Button icon styling */
+.button-icon {
+  width: 20px;
+  height: 20px;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+/* Loading inline icon for consistency */
+.loading-inline {
+  width: 20px;
+  height: 20px;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+/* Easy button */
+.button-easy {
+  background: linear-gradient(135deg, #4caf50, #388e3c);
+}
+
+.button-easy:hover:not(:disabled) {
+  background: linear-gradient(135deg, #66bb6a, #4caf50);
+  transform: scale(1.05);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.button-easy:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+/* Medium button */
+.button-medium {
+  background: linear-gradient(135deg, #ff9800, #f57c00);
+}
+
+.button-medium:hover:not(:disabled) {
+  background: linear-gradient(135deg, #ffb300, #ff9800);
+  transform: scale(1.05);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.button-medium:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+/* Difficult button */
+.button-difficult {
+  background: linear-gradient(135deg, #f44336, #d32f2f);
+}
+
+.button-difficult:hover:not(:disabled) {
+  background: linear-gradient(135deg, #ef5350, #f44336);
+  transform: scale(1.05);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.button-difficult:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+/* Flashcards button */
+.button-flashcards {
+  background: linear-gradient(135deg, #007bff, #0056b3);
+}
+
+.button-flashcards:hover:not(:disabled) {
+  background: linear-gradient(135deg, #3399ff, #007bff);
+  transform: scale(1.05);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.button-flashcards:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+/* Disabled state for all buttons */
+.buttons1:disabled {
+  background: #cccccc !important;
+  color: #666666;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
+/* Focus state for accessibility */
+.buttons1:focus {
+  outline: 2px solid #007bff;
+  outline-offset: 2px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .quiz-button-row,
+  .flashcards-button-row {
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .buttons1 {
+    width: 100%;
+    max-width: 200px;
+  }
+}

@@ -13,13 +13,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from youtube_transcript_api import YouTubeTranscriptApi
 from supabase import create_client, Client
-from google.api_core.exceptions import ResourceExhausted # Import the specific exception
+from google.api_core.exceptions import ResourceExhausted
 
 from rag.rag import (
     generate_chat_response,
     generate_flashcards,
     generate_transcript_summary,
     generate_quiz,
+    generate_medium_quiz,
+    generate_difficult_quiz,
     generate_subjects,
     generate_image
 )
@@ -44,7 +46,6 @@ if not supabase_url or not supabase_key:
     raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set in environment variables.")
 supabase: Client = create_client(supabase_url, supabase_key)
 
-
 class ChatIn(BaseModel):
     query: str
 
@@ -68,10 +69,11 @@ async def chat(input_text: str = Body(...)):
         print(f"❌ Error in /api/chat/: {error_details}")
         raise HTTPException(status_code=500, detail=f"Server Error: {e}")
 
-
 class ContentRequest(BaseModel):
     transcript: str
     user_id: str
+    difficulty: str = "easy"  # Default to easy
+    num_questions: int = 5    # Default to 5 questions
 
 @app.post("/api/summary/")
 async def summary(request: ContentRequest):
@@ -91,7 +93,6 @@ async def summary(request: ContentRequest):
 async def subjects(request: ContentRequest):
     try:
         subjects_list = await generate_subjects(request.transcript)
-        # Subjects might already be JSON-serializable (list of strings)
         save_to_supabase(request.user_id, subjects_list, "subjects", "json")
         return {"data": subjects_list}
     except ResourceExhausted as e:
@@ -113,23 +114,17 @@ async def yt_link(request: YTLinkRequest):
         if "&list" in url:
             url = url.split("&list")[0]
         if "?v=" not in url:
-             raise ValueError("Invalid YouTube URL format. Missing '?v='.")
-        video_id = url.split("?v=")[1].split("&")[0] # Handle extra params after video id
+            raise ValueError("Invalid YouTube URL format. Missing '?v='.")
+        video_id = url.split("?v=")[1].split("&")[0]
 
         raw_subtitles = YouTubeTranscriptApi.get_transcript(video_id)
         transcript = " ".join(re.sub(r'\n+', ' ', row['text']) for row in raw_subtitles)
-
-        # Optionally save the raw transcript
-        # save_to_supabase(request.user_id, transcript, "yt_links", "txt")
         return {"transcript": transcript}
-
     except Exception as e:
         print(f"❌ Error in /api/yt_link/: {e}")
-        # Distinguish between transcript not found and other errors if possible
         if "No transcript found" in str(e):
-             raise HTTPException(status_code=404, detail=f"Could not find transcript for video: {e}")
+            raise HTTPException(status_code=404, detail=f"Could not find transcript for video: {e}")
         raise HTTPException(status_code=500, detail=f"Error processing YouTube link: {e}")
-
 
 @app.post("/api/flashcards/")
 async def flashcards(request: ContentRequest):
@@ -139,28 +134,23 @@ async def flashcards(request: ContentRequest):
         print(f"Generated Flashcards Response Type: {type(flashcards_result)}")
         print(f"Generated Flashcards Response Content: {flashcards_result}")
 
-        # Validate the structure received from generate_flashcards
         if not hasattr(flashcards_result, "flashcards") or not isinstance(flashcards_result.flashcards, list):
             print(f"❌ Unexpected flashcard response format: {flashcards_result}")
             raise ValueError("Flashcard generation returned an unexpected format.")
         if not flashcards_result.flashcards:
-             print("✅ Flashcard generation returned empty list, possibly short transcript.")
-             return {"questions": [], "answers": [], "images": []}
+            print("✅ Flashcard generation returned empty list, possibly short transcript.")
+            return {"questions": [], "answers": [], "images": []}
 
         print(f"Number of flashcards to generate images for: {len(flashcards_result.flashcards)}")
-        # Generate images concurrently
         coroutine_tasks = []
         for i, flashcard in enumerate(flashcards_result.flashcards):
-             if hasattr(flashcard, "image_prompt") and flashcard.image_prompt:
-                 print(f"  - Task {i+1}: Generating image for prompt: '{flashcard.image_prompt[:50]}...'")
-                 coroutine_tasks.append(generate_image(flashcard.image_prompt))
-             else:
-                 print(f"  - Task {i+1}: Skipping image generation (no prompt)")
-                 # Append None or a placeholder to keep lists aligned if needed,
-                 # but better to handle potential None values later
-                 coroutine_tasks.append(asyncio.sleep(0, result=None)) # Non-blocking placeholder
+            if hasattr(flashcard, "image_prompt") and flashcard.image_prompt:
+                print(f"  - Task {i+1}: Generating image for prompt: '{flashcard.image_prompt[:50]}...'")
+                coroutine_tasks.append(generate_image(flashcard.image_prompt))
+            else:
+                print(f"  - Task {i+1}: Skipping image generation (no prompt)")
+                coroutine_tasks.append(asyncio.sleep(0, result=None))
 
-        # Use return_exceptions=True to handle potential individual image generation failures
         image_responses = await asyncio.gather(*coroutine_tasks, return_exceptions=True)
         print("Image generation tasks complete.")
 
@@ -173,77 +163,56 @@ async def flashcards(request: ContentRequest):
             questions.append(flashcard.question)
             answers.append(flashcard.answer)
 
-            public_image_url = None # Default to no image
+            public_image_url = None
             if isinstance(img_response, Exception):
                 print(f"❌ Error generating image for flashcard {i}: {img_response}")
             elif img_response and img_response.status_code == 200:
                 try:
-                    # Make sure the structure is as expected
                     artifacts = img_response.json().get("artifacts")
                     if artifacts and len(artifacts) > 0 and "base64" in artifacts[0]:
                         image_b64 = artifacts[0]["base64"]
-                        # Schedule image saving (don't await here to parallelize uploads)
                         image_save_tasks.append(
                             save_image_to_supabase(request.user_id, image_b64, "flashcards")
                         )
                     else:
-                         print(f"⚠️ Image response for flashcard {i} missing expected data: {img_response.json()}")
+                        print(f"⚠️ Image response for flashcard {i} missing expected data: {img_response.json()}")
                 except Exception as json_e:
-                     print(f"❌ Error parsing image response JSON for flashcard {i}: {json_e}")
-            elif img_response: # Handle non-200 responses
+                    print(f"❌ Error parsing image response JSON for flashcard {i}: {json_e}")
+            elif img_response:
                 print(f"⚠️ Image generation API returned status {img_response.status_code} for flashcard {i}")
             else:
-                # This case handles the asyncio.sleep placeholder if no prompt was given
-                 print(f"ℹ️ No image generated for flashcard {i} (no prompt/task skipped).")
+                print(f"ℹ️ No image generated for flashcard {i} (no prompt/task skipped).")
 
-        # Wait for all image uploads to complete and get their URLs
-        # Use return_exceptions=True here as well
         print(f"Attempting to save {len(image_save_tasks)} images to Supabase...")
         saved_image_results = await asyncio.gather(*image_save_tasks, return_exceptions=True)
         print("Supabase image saving tasks complete.")
 
-        # Assign URLs based on successful saves, maintaining order relative to tasks started
-        image_url_map = {} # Map original index to URL
+        image_url_map = {}
         current_save_task_index = 0
-        for i, img_response in enumerate(image_responses): # Iterate through original responses
-             # Only try to get a saved URL if an image was successfully generated AND scheduled for saving
-             if img_response and not isinstance(img_response, Exception) and img_response.status_code == 200:
-                  # Check corresponding save result
-                  if current_save_task_index < len(saved_image_results):
-                      save_result = saved_image_results[current_save_task_index]
-                      if isinstance(save_result, Exception):
-                          print(f"❌ Error saving image from flashcard {i} to Supabase: {save_result}")
-                          image_url_map[i] = None # Indicate save failure
-                      elif save_result:
-                           image_url_map[i] = save_result # Store the URL
-                      else:
-                           image_url_map[i] = None # Indicate save failure (e.g., save function returned None)
-                      current_save_task_index += 1
-                  else: # Should not happen if logic is correct
-                       print(f"⚠️ Mismatch between generated images and save tasks at index {i}")
-                       image_url_map[i] = None
-             else:
-                  image_url_map[i] = None # No image generated or generation failed
+        for i, img_response in enumerate(image_responses):
+            if img_response and not isinstance(img_response, Exception) and img_response.status_code == 200:
+                if current_save_task_index < len(saved_image_results):
+                    save_result = saved_image_results[current_save_task_index]
+                    if isinstance(save_result, Exception):
+                        print(f"❌ Error saving image from flashcard {i} to Supabase: {save_result}")
+                        image_url_map[i] = None
+                    elif save_result:
+                        image_url_map[i] = save_result
+                    else:
+                        image_url_map[i] = None
+                    current_save_task_index += 1
+                else:
+                    print(f"⚠️ Mismatch between generated images and save tasks at index {i}")
+                    image_url_map[i] = None
+            else:
+                image_url_map[i] = None
 
-
-        # Build final list of URLs in the correct order
         image_urls = [image_url_map.get(i) for i in range(len(flashcards_result.flashcards))]
-
-        # Save combined flashcard data (optional, depending on needs)
-        # try:
-        #     flashcard_data = {"questions": questions, "answers": answers, "image_urls": image_urls}
-        #     save_to_supabase(request.user_id, flashcard_data, "flashcards_meta", "json")
-        #     print("✅ Saved flashcard metadata to Supabase.")
-        # except Exception as meta_save_e:
-        #      print(f"⚠️ Failed to save flashcard metadata: {meta_save_e}")
-
-
         return {"questions": questions, "answers": answers, "images": image_urls}
-
     except ResourceExhausted as e:
         print(f"❌ Rate Limit Error in /api/flashcards/: {e}")
         raise HTTPException(status_code=429, detail="API rate limit exceeded generating flashcards. Please try again shortly.")
-    except ValueError as ve: # Catch specific validation errors
+    except ValueError as ve:
         print(f"❌ Value Error in /api/flashcards/: {ve}")
         raise HTTPException(status_code=500, detail=f"Server Error: {ve}")
     except Exception as e:
@@ -251,81 +220,103 @@ async def flashcards(request: ContentRequest):
         print(f"❌ Unhandled Error in /api/flashcards/: {error_details}")
         raise HTTPException(status_code=500, detail=f"Unexpected Server Error: {e}")
 
-
 @app.post("/api/quiz/")
 async def quiz(request: ContentRequest):
     try:
-        quiz_data = await generate_quiz(request.transcript)
-        # Quiz data should already be JSON-serializable list of dicts
+        difficulty = request.difficulty.lower()
+        num_questions = request.num_questions
+
+        if difficulty not in ["easy", "medium", "difficult"]:
+            raise ValueError(f"Invalid difficulty level: {difficulty}")
+
+        print(f"Generating {difficulty} quiz with {num_questions} questions...")
+        if difficulty == "easy":
+            quiz_data = await generate_quiz(request.transcript)
+        elif difficulty == "medium":
+            quiz_data = await generate_medium_quiz(request.transcript)
+        else:  # difficult
+            quiz_data = await generate_difficult_quiz(request.transcript)
+
+        print(f"Raw {difficulty} quiz data: {json.dumps(quiz_data, indent=2)}")
+        
+        # Ensure quiz_data is a list
+        if not isinstance(quiz_data, list):
+            print(f"⚠️ Quiz data is not a list: {type(quiz_data)}")
+            quiz_data = []
+
+        # Limit to requested number of questions
+        quiz_data = quiz_data[:num_questions]
+
+        # Add difficulty field to each question
+        for item in quiz_data:
+            item["difficulty"] = difficulty
+
+        # Fallback if no questions generated
+        if not quiz_data:
+            print(f"⚠️ No {difficulty} questions generated. Returning fallback.")
+            quiz_data = [{
+                "question": f"No {difficulty} questions available",
+                "answers": ["Try again later"],
+                "correct_answer": 0,
+                "difficulty": difficulty
+            }]
+
+        print(f"Final {difficulty} quiz data (after processing): {json.dumps(quiz_data, indent=2)}")
         save_to_supabase(request.user_id, quiz_data, "quiz", "json")
-        # The structure from generate_quiz should already be {"question": ..., "answers": ..., "correct_answer": ...}
-        # FastAPI automatically serializes the list of Pydantic models/dicts
         return {"data": quiz_data}
     except ResourceExhausted as e:
         print(f"❌ Rate Limit Error in /api/quiz/: {e}")
         raise HTTPException(status_code=429, detail="API rate limit exceeded generating quiz. Please try again shortly.")
-    except ValueError as ve: # Catch specific validation errors from generate_quiz
-         print(f"❌ Value Error in /api/quiz/: {ve}")
-         raise HTTPException(status_code=500, detail=f"Server Error: {ve}")
+    except ValueError as ve:
+        print(f"❌ Value Error in /api/quiz/: {ve}")
+        raise HTTPException(status_code=400, detail=f"Invalid request: {ve}")
     except Exception as e:
         error_details = traceback.format_exc()
         print(f"❌ Error in /api/quiz/: {error_details}")
         raise HTTPException(status_code=500, detail=f"Server Error generating quiz: {e}")
 
-
-# --- User Management (Example) ---
 class UserCreateRequest(BaseModel):
-     username: str
+    username: str
 
 @app.post("/user/create/")
 async def create_user(request: UserCreateRequest):
     try:
         data, count = supabase.table('users').insert({"username": request.username}).execute()
-        # data format is typically [[{'id': ..., 'username': ...}]]
         if data and len(data) > 1 and len(data[1]) > 0:
-             return {"data": data[1][0]} # Return the created user object
+            return {"data": data[1][0]}
         else:
-             raise HTTPException(status_code=500, detail="Failed to create user or parse response.")
+            raise HTTPException(status_code=500, detail="Failed to create user or parse response.")
     except Exception as e:
-         print(f"❌ Error in /user/create/: {e}")
-         raise HTTPException(status_code=500, detail=f"Error creating user: {e}")
+        print(f"❌ Error in /user/create/: {e}")
+        raise HTTPException(status_code=500, detail=f"Error creating user: {e}")
 
-
-# --- Supabase Helper Functions ---
-
-# Simplified function for saving text/json
 def save_to_supabase(user_id: str, data: any, bucket_subfolder: str, file_extension: str):
     """Saves text or JSON data to Supabase storage."""
     if not user_id:
         print("⚠️ Attempted to save to Supabase without user_id.")
-        return None # Or raise error
+        return None
 
     tmp_filename = f"{uuid.uuid4()}.{file_extension}"
     supabase_path = f"{user_id}/{bucket_subfolder}/{tmp_filename}"
     content_type = "application/json" if file_extension == "json" else "text/plain"
 
     try:
-        # Convert data to bytes
         if file_extension == "json":
             file_content = json.dumps(data).encode('utf-8')
-        else: # txt
+        else:
             file_content = str(data).encode('utf-8')
 
         response = supabase.storage.from_("content").upload(
             path=supabase_path,
-            file=file_content, # Upload bytes directly
-            file_options={"content-type": content_type, "upsert": "false"} # Don't overwrite
+            file=file_content,
+            file_options={"content-type": content_type, "upsert": "false"}
         )
         print(f"✅ Successfully saved {file_extension} to Supabase: {supabase_path}")
-         # response object doesn't directly contain the URL, need to construct or retrieve it if needed immediately.
-        # For simplicity, just returning the response object for now.
         return response
     except Exception as e:
         print(f"❌ Failed to save {file_extension} to Supabase path {supabase_path}: {e}")
-        # Decide if this should raise an exception or just return None/log
         return None
 
-# Specific async function for saving images and returning public URL
 async def save_image_to_supabase(user_id: str, image_base64: str, bucket_subfolder: str) -> str | None:
     """Saves a base64 encoded image to Supabase storage and returns the public URL."""
     if not user_id:
@@ -338,33 +329,25 @@ async def save_image_to_supabase(user_id: str, image_base64: str, bucket_subfold
 
     try:
         image_bytes = base64.b64decode(image_base64)
-
-        # Supabase Python client's upload isn't natively async, run in thread pool
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(
-             None, # Use default executor
-             lambda: supabase.storage.from_("content").upload(
+            None,
+            lambda: supabase.storage.from_("content").upload(
                 path=supabase_path,
                 file=image_bytes,
                 file_options={"content-type": content_type, "upsert": "false"}
             )
         )
-
-        # After successful upload, get the public URL
         public_url = supabase.storage.from_("content").get_public_url(supabase_path)
         print(f"✅ Successfully saved image to Supabase: {public_url}")
         return public_url
-
     except Exception as e:
         print(f"❌ Failed to save image to Supabase path {supabase_path}: {e}")
         return None
 
-
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8000)) # Use PORT env var if available (for deployment)
+    port = int(os.environ.get("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
-
-
 
 # import re
 # import uvicorn

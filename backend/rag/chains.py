@@ -2,21 +2,21 @@ from langchain.prompts import PromptTemplate
 from langchain.schema.language_model import BaseLanguageModel
 from langchain.schema.output_parser import StrOutputParser
 from langchain.schema.runnable import Runnable
-from langchain_core.output_parsers import (BaseOutputParser, JsonOutputParser,
-                                           PydanticOutputParser)
+from langchain_core.output_parsers import BaseOutputParser, JsonOutputParser, PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
-# Use v1 imports if using Langchain Pydantic v1 compatibility
 from langchain_core.pydantic_v1 import BaseModel, Field
-# Or use standard Pydantic if Langchain uses Pydantic v2
-# from pydantic import BaseModel, Field
 
-from rag.data_models import (FlashCard, FlashCards, QuestionAndAnswer,
-                             QuestionsAndAnswers, Subjects)
+from rag.data_models import FlashCard, FlashCards, QuestionAndAnswer, QuestionsAndAnswers, Subjects
 
-from .prompts import (CLEAN_TRANSCRIPT_TEMPLATE, FLASHCARDS_TEMPLATE,
-                      QUIZ_TEMPLATE, SUBJECTS_TEMPLATE,
-                      TRANSCRIPT_SUMMARY_TEMPLATE)
-
+from .prompts import (
+    CLEAN_TRANSCRIPT_TEMPLATE,
+    FLASHCARDS_TEMPLATE,
+    QUIZ_TEMPLATE,
+    MEDQUIZ_TEMPLATE,
+    DIFQUIZ_TEMPLATE,
+    SUBJECTS_TEMPLATE,
+    TRANSCRIPT_SUMMARY_TEMPLATE
+)
 
 def create_chat_chain(llm: BaseLanguageModel) -> Runnable:
     prompt = ChatPromptTemplate.from_messages([
@@ -26,10 +26,9 @@ def create_chat_chain(llm: BaseLanguageModel) -> Runnable:
     chain = (
         prompt | llm | StrOutputParser()
     ).with_config(
-        run_name="ChatChain", # Corrected run_name
+        run_name="ChatChain",
     )
     return chain
-
 
 def create_transcript_summary_chain(llm: BaseLanguageModel) -> Runnable:
     chain = (
@@ -39,19 +38,15 @@ def create_transcript_summary_chain(llm: BaseLanguageModel) -> Runnable:
     )
     return chain
 
-
 def create_flashcard_chain(llm: BaseLanguageModel) -> Runnable:
-    # Ensure FLASHCARDS_TEMPLATE includes instructions for the Pydantic format
     chain = (
         PromptTemplate.from_template(FLASHCARDS_TEMPLATE) | llm | PydanticOutputParser(pydantic_object=FlashCards)
     ).with_config(
-        run_name="FlashcardChain", # Corrected run_name
+        run_name="FlashcardChain",
     )
     return chain
 
-
 def create_quiz_chain(llm: BaseLanguageModel) -> Runnable:
-     # Ensure QUIZ_TEMPLATE includes instructions for the Pydantic format
     chain = (
         PromptTemplate.from_template(QUIZ_TEMPLATE) | llm | PydanticOutputParser(pydantic_object=QuestionsAndAnswers)
     ).with_config(
@@ -59,16 +54,29 @@ def create_quiz_chain(llm: BaseLanguageModel) -> Runnable:
     )
     return chain
 
-
-def create_subjects_chain(llm: BaseLanguageModel) -> Runnable:
-     # Ensure SUBJECTS_TEMPLATE includes instructions for the JSON format { "subjects": ["subj1", "subj2"] }
+def create_medium_quiz_chain(llm: BaseLanguageModel) -> Runnable:
     chain = (
-        PromptTemplate.from_template(SUBJECTS_TEMPLATE) | llm | JsonOutputParser(pydantic_object=Subjects)
+        PromptTemplate.from_template(MEDQUIZ_TEMPLATE) | llm | PydanticOutputParser(pydantic_object=QuestionsAndAnswers)
     ).with_config(
-        run_name="SubjectsChain", # Corrected run_name
+        run_name="MediumQuizChain",
     )
     return chain
 
+def create_difficult_quiz_chain(llm: BaseLanguageModel) -> Runnable:
+    chain = (
+        PromptTemplate.from_template(DIFQUIZ_TEMPLATE) | llm | PydanticOutputParser(pydantic_object=QuestionsAndAnswers)
+    ).with_config(
+        run_name="DifficultQuizChain",
+    )
+    return chain
+
+def create_subjects_chain(llm: BaseLanguageModel) -> Runnable:
+    chain = (
+        PromptTemplate.from_template(SUBJECTS_TEMPLATE) | llm | JsonOutputParser(pydantic_object=Subjects)
+    ).with_config(
+        run_name="SubjectsChain",
+    )
+    return chain
 
 def create_clean_transcript_chain(llm: BaseLanguageModel) -> Runnable:
     chain = (

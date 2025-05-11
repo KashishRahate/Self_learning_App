@@ -24,4 +24,3 @@ class FlashCard(BaseModel):
 
 class FlashCards(BaseModel):
     flashcards: list[FlashCard] = Field(description="list of flashcards")
-

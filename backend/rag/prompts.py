@@ -85,6 +85,94 @@ See the example format below:
 
 # Quiz"""
 
+# Medium Quiz Template
+MEDQUIZ_TEMPLATE = """Given the following lecture transcript, generate a **medium difficulty** quiz that tests conceptual understanding and interpretation.
+
+The format of the quiz should be a list of questions, answers, and the correct answer. The correct answer should be the **index** of the correct answer in the list of answers (0-indexed). 
+
+Scramble the order of answers so the correct one is not always at the same position. Limit to 5 question-answer sets.
+
+Medium difficulty implies:
+- Questions may combine multiple ideas from the transcript.
+- Questions may require understanding implications, causes, or examples.
+
+Example format:
+<example>
+{{
+    "question_and_answers": [
+        {{
+            "question": "Which of the following best explains why photosynthesis is crucial to the ecosystem?",
+            "answers": [
+                "It produces oxygen used by animals",
+                "It converts solar energy into chemical energy",
+                "It provides energy at the base of the food chain",
+                "All of the above"
+            ],
+            "correct_answer": 3
+        }},
+        {{
+            "question": "What would likely happen if the nitrogen cycle were disrupted?",
+            "answers": [
+                "Increased oxygen levels in water",
+                "Excessive plant growth",
+                "Decreased soil fertility",
+                "Improved crop yields"
+            ],
+            "correct_answer": 2
+        }}
+    ]
+}}
+</example>
+
+# Transcript
+{transcript}
+
+# Quiz
+"""
+
+# Difficult Quiz Template
+DIFQUIZ_TEMPLATE = """You are given a lecture transcript. Create a **challenging quiz** that evaluates deep understanding, application, and multi-concept reasoning.
+
+The quiz format should include a list of questions with multiple-choice answers. The correct answer must be the **index** in the list (0-indexed). Scramble answer orders and limit to 5 questions.
+
+Difficult-level implies:
+- Questions may involve synthesis of ideas.
+- Some questions may ask for analysis, prediction, or theoretical application.
+- Distractors (wrong answers) should be plausible.
+
+Example format:
+<example>
+{{
+    "question_and_answers": [
+        {{
+            "question": "Considering the principles of reinforcement learning discussed, which scenario best illustrates the concept of 'delayed reward'?",
+            "answers": [
+                "A dog getting a treat after every correct command",
+                "A child saving allowance for a month to buy a toy",
+                "A teacher giving instant feedback after homework",
+                "A vending machine giving snacks upon inserting coins"
+            ],
+            "correct_answer": 1
+        }},
+        {{
+            "question": "What would be the most likely outcome if a key assumption in Newton’s Second Law is violated?",
+            "answers": [
+                "Forces would no longer result in acceleration",
+                "Mass would become a variable in motion",
+                "The law would only apply to objects at rest",
+                "The object would accelerate infinitely"
+            ],
+            "correct_answer": 0
+        }}
+    ]
+}}
+</example>
+
+# Transcript
+{transcript}
+
+# Quiz
+"""
 
 FLASHCARDS_TEMPLATE = """Given the following lecture transcript. Generate a list of flashcards based on the content. The format of the flashcards should be a list of question, answer and an image prompt that will be sent to Stable Diffusion for image generation. An example of the format is shown below in example tags. Generate up to at most 5 flashcards.
 
